@@ -46,9 +46,11 @@ wss.on('connection', (ws) => {
   }
   const seatNumber = seatIndex + 1;
   seats[seatIndex] = ws;
+  console.log(`[RUNNER WS] Cliente conectado al runner como J${seatNumber}.`);
   ws.send(`J${seatNumber}`);
   ws.on('message', (data) => bufferedMessages.push({ sender: ws, text: data.toString() }));
   ws.on('close', () => {
+    console.log(`[RUNNER WS] Cliente J${seatNumber} desconectado.`);
     if (seats[seatIndex] === ws) seats[seatIndex] = null;
     for (const client of wss.clients) {
       if (client !== ws && client.readyState === WebSocket.OPEN) {
@@ -88,6 +90,21 @@ async function runBots() {
   for (let i = 0; i < BOT_COUNT; i++) {
     console.log(`[BOOT] Creando página ${i + 1}/${BOT_COUNT}...`);
     const page = await browser.newPage({ viewport: { width: 480, height: 360 } });
+    page.on('websocket', (socket) => {
+      console.log(`[BOT ${i + 1} WS] Intento de conexión: ${socket.url()}`);
+      socket.on('framesent', (event) => {
+        console.log(`[BOT ${i + 1} WS] Enviado: ${String(event.payload).slice(0, 300)}`);
+      });
+      socket.on('framereceived', (event) => {
+        console.log(`[BOT ${i + 1} WS] Recibido: ${String(event.payload).slice(0, 300)}`);
+      });
+      socket.on('socketerror', (error) => {
+        console.error(`[BOT ${i + 1} WS] Error: ${error}`);
+      });
+      socket.on('close', () => {
+        console.log(`[BOT ${i + 1} WS] Conexión cerrada.`);
+      });
+    });
     page.on('pageerror', (error) => console.error(`Error en bot ${i + 1}:`, error.message));
     page.on('console', (message) => {
       if (message.type() === 'error') console.error(`Consola bot ${i + 1}:`, message.text());
@@ -99,12 +116,14 @@ async function runBots() {
     await page.addInitScript(({ port, gameWsUrl }) => {
       const NativeWebSocket = window.WebSocket;
       function BotRunnerWebSocket(input, protocols) {
-        let target = String(input);
+        const requested = String(input);
+        let target = requested;
         if (/^ws:\/\/localhost:8080(?=\/|$)/i.test(target)) {
           target = `ws://127.0.0.1:${port}`;
         } else if (/^(?:wss?|https?):\/\/(?:cosa-random(?:-1)?\.onrender\.com|192\.168\.1\.13[23]:8080)(?=\/|$)/i.test(target)) {
           target = gameWsUrl;
         }
+        console.info(`[BOT WS PATCH] ${requested} -> ${target}`);
         return protocols === undefined
           ? new NativeWebSocket(target)
           : new NativeWebSocket(target, protocols);
