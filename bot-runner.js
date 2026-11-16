@@ -7,7 +7,7 @@ const WebSocket = require('ws');
 const { chromium } = require('playwright');
 
 const PORT = Number(process.env.PORT || 8080);
-const BOT_COUNT = Math.max(1, Number.parseInt(process.env.BOT_COUNT || '5', 10) || 5);
+const BOT_COUNT = Math.max(1, Number.parseInt(process.env.BOT_COUNT || '1', 10) || 1);
 const GAME_WS_URL = process.env.GAME_WS_URL || 'wss://cosa-random-1.onrender.com';
 const GAME_FILE = path.join(__dirname, 'comer.html');
 const GAME_URL = `http://127.0.0.1:${PORT}/comer.html`;
@@ -112,14 +112,14 @@ async function runBots() {
   console.log('[BOOT] Lanzando Chromium headless...');
   browser = await chromium.launch({
     headless: true,
-    args: ['--no-sandbox', '--disable-dev-shm-usage', '--enable-webgl', '--use-gl=angle', '--use-angle=swiftshader']
+    args: ['--no-sandbox', '--disable-dev-shm-usage', '--disable-background-networking', '--disable-sync', '--no-first-run', '--no-default-browser-check']
   });
   console.log('[BOOT] Chromium iniciado.');
   browser.on('disconnected', () => console.error('[BOOT] Chromium se desconectó.'));
 
   for (let i = 0; i < BOT_COUNT; i++) {
     console.log(`[BOOT] Creando página ${i + 1}/${BOT_COUNT}...`);
-    const page = await browser.newPage({ viewport: { width: 480, height: 360 } });
+    const page = await browser.newPage({ viewport: { width: 320, height: 240 } });
     page.on('websocket', (socket) => {
       console.log(`[BOT ${i + 1} WS] Intento de conexión: ${socket.url()}`);
       socket.on('framesent', (event) => {
