@@ -12,6 +12,36 @@ const GAME_WS_URL = process.env.GAME_WS_URL || 'wss://cosa-random-1.onrender.com
 const GAME_FILE = path.join(__dirname, 'comer.html');
 const GAME_URL = `http://127.0.0.1:${PORT}/comer.html`;
 
+function readCgroupValue(file) {
+  try {
+    return fs.readFileSync(file, 'utf8').trim();
+  } catch {
+    return null;
+  }
+}
+
+function logMemoryUsage() {
+  const rssMb = Math.round(process.memoryUsage().rss / 1024 / 1024);
+  const current = readCgroupValue('/sys/fs/cgroup/memory.current') ||
+    readCgroupValue('/sys/fs/cgroup/memory/memory.usage_in_bytes');
+  const limit = readCgroupValue('/sys/fs/cgroup/memory.max') ||
+    readCgroupValue('/sys/fs/cgroup/memory/memory.limit_in_bytes');
+  const events = readCgroupValue('/sys/fs/cgroup/memory.events');
+  const oomKill = events?.match(/^oom_kill\s+(\d+)$/m)?.[1] ||
+    readCgroupValue('/sys/fs/cgroup/memory/memory.failcnt') || 'n/a';
+
+  if (current && limit && limit !== 'max') {
+    const currentMb = (Number(current) / 1024 / 1024).toFixed(0);
+    const limitMb = (Number(limit) / 1024 / 1024).toFixed(0);
+    console.log(`[MEM] Contenedor ${currentMb}/${limitMb} MB; Node RSS ${rssMb} MB; OOM kills ${oomKill}.`);
+  } else {
+    console.log(`[MEM] Node RSS ${rssMb} MB; cgroup no disponible; OOM kills ${oomKill}.`);
+  }
+}
+
+const memoryLogTimer = setInterval(logMemoryUsage, 10000);
+memoryLogTimer.unref();
+
 const httpServer = http.createServer((req, res) => {
   const pathname = new URL(req.url, `http://${req.headers.host || 'localhost'}`).pathname;
   if (pathname === '/' || pathname === '/health') {
@@ -147,6 +177,7 @@ httpServer.listen(PORT, '0.0.0.0', () => {
 });
 
 async function stop() {
+  clearInterval(memoryLogTimer);
   for (const page of pages) await page.close().catch(() => {});
   if (browser) await browser.close().catch(() => {});
   wss.close();
