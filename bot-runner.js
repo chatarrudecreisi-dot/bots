@@ -74,17 +74,26 @@ let browser;
 const pages = [];
 
 async function runBots() {
+  console.log(`[BOOT] HTML esperado: ${GAME_FILE}`);
   if (!fs.existsSync(GAME_FILE)) throw new Error('Falta comer.html en la raíz del repositorio.');
+  console.log(`[BOOT] comer.html encontrado (${fs.statSync(GAME_FILE).size} bytes).`);
+  console.log('[BOOT] Lanzando Chromium headless...');
   browser = await chromium.launch({
     headless: true,
     args: ['--no-sandbox', '--disable-dev-shm-usage', '--enable-webgl', '--use-gl=angle', '--use-angle=swiftshader']
   });
+  console.log('[BOOT] Chromium iniciado.');
+  browser.on('disconnected', () => console.error('[BOOT] Chromium se desconectó.'));
 
   for (let i = 0; i < BOT_COUNT; i++) {
+    console.log(`[BOOT] Creando página ${i + 1}/${BOT_COUNT}...`);
     const page = await browser.newPage({ viewport: { width: 480, height: 360 } });
     page.on('pageerror', (error) => console.error(`Error en bot ${i + 1}:`, error.message));
     page.on('console', (message) => {
       if (message.type() === 'error') console.error(`Consola bot ${i + 1}:`, message.text());
+    });
+    page.on('requestfailed', (request) => {
+      console.error(`Solicitud fallida bot ${i + 1}: ${request.url()} (${request.failure()?.errorText || 'sin detalle'})`);
     });
 
     await page.addInitScript(({ port, gameWsUrl }) => {
@@ -105,12 +114,14 @@ async function runBots() {
       window.WebSocket = BotRunnerWebSocket;
     }, { port: PORT, gameWsUrl: GAME_WS_URL });
 
-    await page.goto(GAME_URL, { waitUntil: 'load' });
+    console.log(`[BOOT] Abriendo ${GAME_URL} en bot ${i + 1}...`);
+    await page.goto(GAME_URL, { waitUntil: 'domcontentloaded', timeout: 90000 });
+    console.log(`[BOOT] DOM de comer.html cargado para bot ${i + 1}.`);
+    await page.waitForTimeout(5000);
     pages.push(page);
     console.log(`Bot headless ${i + 1}/${BOT_COUNT} cargado; servidor de juego: ${GAME_WS_URL}`);
   }
 }
-
 httpServer.listen(PORT, '0.0.0.0', () => {
   console.log(`Bot runner escuchando en ${PORT}; abrirá ${BOT_COUNT} instancias.`);
   runBots().catch((error) => console.error('No se pudieron iniciar las instancias:', error));
@@ -124,5 +135,6 @@ async function stop() {
 }
 process.on('SIGTERM', stop);
 process.on('SIGINT', stop);
+
 
 
